@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { ClientStatus, ContractStatus, ReceivableStatus, TaskStatus } from "@prisma/client";
+import { ClientStatus, ContractStatus, TaskStatus } from "@prisma/client";
 
 function startOfDay(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());

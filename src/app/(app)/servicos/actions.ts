@@ -65,8 +65,11 @@ export async function saveServiceAndRedirect(input: ServiceFormInput) {
 }
 
 export async function toggleServiceActive(id: string, active: boolean) {
-  await requirePermission("services.manage");
-  await prisma.serviceCatalogItem.update({ where: { id }, data: { active } });
+  const session = await requirePermission("services.manage");
+  await prisma.serviceCatalogItem.updateMany({
+    where: { id, organizationId: session.user.organizationId },
+    data: { active },
+  });
   revalidatePath("/servicos");
 }
 
@@ -93,6 +96,8 @@ export async function saveChecklistTemplate(input: z.infer<typeof checklistTempl
   const organizationId = session.user.organizationId;
 
   if (data.id) {
+    const existing = await prisma.checklistTemplate.findFirst({ where: { id: data.id, organizationId } });
+    if (!existing) throw new Error("Modelo não encontrado");
     await prisma.checklistTemplateItem.deleteMany({ where: { checklistTemplateId: data.id } });
     await prisma.checklistTemplate.update({
       where: { id: data.id },
@@ -131,7 +136,11 @@ export async function saveChecklistTemplate(input: z.infer<typeof checklistTempl
 }
 
 export async function deleteChecklistTemplate(id: string) {
-  await requirePermission("services.manage");
+  const session = await requirePermission("services.manage");
+  const template = await prisma.checklistTemplate.findFirst({
+    where: { id, organizationId: session.user.organizationId },
+  });
+  if (!template) throw new Error("Modelo não encontrado");
   const inUse = await prisma.serviceCatalogItem.count({ where: { checklistTemplateId: id } });
   if (inUse > 0) throw new Error("Este modelo está em uso por serviços do catálogo");
   await prisma.checklistTemplate.delete({ where: { id } });
@@ -160,6 +169,14 @@ const clientServiceSchema = z.object({
 export async function linkServiceToClient(input: z.infer<typeof clientServiceSchema>) {
   const session = await requirePermission("clients.manage");
   const data = clientServiceSchema.parse(input);
+  const organizationId = session.user.organizationId;
+
+  const [client, serviceCatalogItem] = await Promise.all([
+    prisma.client.findFirst({ where: { id: data.clientId, organizationId } }),
+    prisma.serviceCatalogItem.findFirst({ where: { id: data.serviceCatalogItemId, organizationId } }),
+  ]);
+  if (!client) throw new Error("Cliente não encontrado");
+  if (!serviceCatalogItem) throw new Error("Serviço não encontrado no catálogo");
 
   const clientService = await prisma.clientService.create({
     data: {
@@ -185,12 +202,12 @@ export async function linkServiceToClient(input: z.infer<typeof clientServiceSch
 }
 
 export async function updateClientService(input: z.infer<typeof clientServiceSchema>) {
-  await requirePermission("clients.manage");
+  const session = await requirePermission("clients.manage");
   const data = clientServiceSchema.parse(input);
   if (!data.id) throw new Error("ID obrigatório");
 
-  await prisma.clientService.update({
-    where: { id: data.id },
+  await prisma.clientService.updateMany({
+    where: { id: data.id, organizationId: session.user.organizationId },
     data: {
       departmentId: data.departmentId || null,
       responsibleId: data.responsibleId || null,
@@ -206,8 +223,11 @@ export async function updateClientService(input: z.infer<typeof clientServiceSch
 }
 
 export async function removeClientService(id: string, clientId: string) {
-  await requirePermission("clients.manage");
-  await prisma.clientService.update({ where: { id }, data: { active: false } });
+  const session = await requirePermission("clients.manage");
+  await prisma.clientService.updateMany({
+    where: { id, organizationId: session.user.organizationId },
+    data: { active: false },
+  });
   revalidatePath(`/clientes/${clientId}`);
 }
 

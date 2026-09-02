@@ -11,6 +11,14 @@ import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/session";
 import { logAudit } from "@/lib/audit";
 import { generateTaskCode } from "@/lib/codes";
+import { canCompleteTask } from "@/lib/task-rules";
+
+/** Garante que a tarefa existe e pertence à organização do usuário autenticado. */
+async function assertTaskInOrg(taskId: string, organizationId: string) {
+  const task = await prisma.task.findFirst({ where: { id: taskId, organizationId } });
+  if (!task) throw new Error("Tarefa não encontrada");
+  return task;
+}
 
 const taskSchema = z.object({
   title: z.string().min(2),
@@ -63,6 +71,18 @@ export async function createTask(input: z.infer<typeof taskSchema>) {
     action: "CREATE",
   });
 
+  if (data.assigneeId && data.assigneeId !== session.user.id) {
+    await prisma.notification.create({
+      data: {
+        organizationId,
+        userId: data.assigneeId,
+        title: "Você recebeu uma nova tarefa",
+        body: task.title,
+        link: `/tarefas/${task.id}`,
+      },
+    });
+  }
+
   revalidatePath("/tarefas");
   return task.id;
 }
@@ -72,23 +92,18 @@ export async function createTaskAndRedirect(input: z.infer<typeof taskSchema>) {
   redirect(`/tarefas/${id}`);
 }
 
-const REQUIRES_MANAGER_OVERRIDE_MESSAGE =
-  "Existem itens obrigatórios do checklist não concluídos. Apenas um gestor pode concluir mesmo assim.";
-
 export async function changeTaskStatus(taskId: string, status: TaskStatus, force = false) {
   const session = await requirePermission("tasks.execute");
-  const task = await prisma.task.findUnique({
-    where: { id: taskId },
+  const task = await prisma.task.findFirst({
+    where: { id: taskId, organizationId: session.user.organizationId },
     include: { checklistItems: true },
   });
   if (!task) throw new Error("Tarefa não encontrada");
 
-  if (status === "CONCLUIDA" && !force) {
-    const pendingRequired = task.checklistItems.some((i) => i.required && !i.completed);
+  if (status === "CONCLUIDA") {
     const canOverride = session.user.permissions.includes("tasks.manage");
-    if (pendingRequired && !canOverride) {
-      throw new Error(REQUIRES_MANAGER_OVERRIDE_MESSAGE);
-    }
+    const result = canCompleteTask(task.checklistItems, { force, canOverride });
+    if (!result.allowed) throw new Error(result.reason);
   }
 
   await prisma.task.update({
@@ -119,7 +134,12 @@ export async function changeTaskStatus(taskId: string, status: TaskStatus, force
 
 export async function toggleChecklistItem(itemId: string, completed: boolean) {
   const session = await requirePermission("tasks.execute");
-  const item = await prisma.taskChecklistItem.update({
+  const item = await prisma.taskChecklistItem.findFirst({
+    where: { id: itemId, task: { organizationId: session.user.organizationId } },
+  });
+  if (!item) throw new Error("Item de checklist não encontrado");
+
+  await prisma.taskChecklistItem.update({
     where: { id: itemId },
     data: {
       completed,
@@ -132,8 +152,7 @@ export async function toggleChecklistItem(itemId: string, completed: boolean) {
 
 export async function addSubtask(parentTaskId: string, title: string) {
   const session = await requirePermission("tasks.manage");
-  const parent = await prisma.task.findUnique({ where: { id: parentTaskId } });
-  if (!parent) throw new Error("Tarefa não encontrada");
+  const parent = await assertTaskInOrg(parentTaskId, session.user.organizationId);
   const code = await generateTaskCode(session.user.organizationId);
 
   await prisma.task.create({
@@ -155,6 +174,7 @@ export async function addSubtask(parentTaskId: string, title: string) {
 
 export async function addComment(taskId: string, body: string) {
   const session = await requirePermission("tasks.execute");
+  await assertTaskInOrg(taskId, session.user.organizationId);
   const mentions = Array.from(body.matchAll(/@(\w+)/g)).map((m) => m[1]);
   await prisma.taskComment.create({
     data: { taskId, authorId: session.user.id, body, mentions },
@@ -168,6 +188,7 @@ export async function uploadTaskAttachment(formData: FormData) {
   const file = formData.get("file") as File | null;
   if (!taskId || !file || file.size === 0) throw new Error("Selecione um arquivo válido");
   if (file.size > 20 * 1024 * 1024) throw new Error("Arquivo maior que 20MB");
+  await assertTaskInOrg(taskId, session.user.organizationId);
 
   const dir = path.join(process.cwd(), "public", "uploads", session.user.organizationId, "tarefas", taskId);
   await mkdir(dir, { recursive: true });
@@ -184,20 +205,25 @@ export async function uploadTaskAttachment(formData: FormData) {
 }
 
 export async function setDependency(dependentTaskId: string, prerequisiteTaskId: string) {
-  await requirePermission("tasks.manage");
+  const session = await requirePermission("tasks.manage");
   if (dependentTaskId === prerequisiteTaskId) throw new Error("Uma tarefa não pode depender de si mesma");
+  await assertTaskInOrg(dependentTaskId, session.user.organizationId);
+  await assertTaskInOrg(prerequisiteTaskId, session.user.organizationId);
   await prisma.taskDependency.create({ data: { dependentTaskId, prerequisiteTaskId } });
   revalidatePath(`/tarefas/${dependentTaskId}`);
 }
 
 export async function removeDependency(id: string, taskId: string) {
-  await requirePermission("tasks.manage");
-  await prisma.taskDependency.delete({ where: { id } });
+  const session = await requirePermission("tasks.manage");
+  await prisma.taskDependency.deleteMany({
+    where: { id, dependentTask: { organizationId: session.user.organizationId } },
+  });
   revalidatePath(`/tarefas/${taskId}`);
 }
 
 export async function logDelay(taskId: string, reason: string, detail: string, daysLate: number) {
   const session = await requirePermission("tasks.execute");
+  await assertTaskInOrg(taskId, session.user.organizationId);
   await prisma.taskDelayLog.create({
     data: {
       taskId,
@@ -230,6 +256,21 @@ export async function updateTaskAssignments(input: {
     where: { id: { in: input.taskIds }, organizationId: session.user.organizationId },
     data,
   });
+
+  if (input.assigneeId) {
+    const tasks = await prisma.task.findMany({ where: { id: { in: input.taskIds } }, select: { title: true, id: true } });
+    for (const task of tasks) {
+      await prisma.notification.create({
+        data: {
+          organizationId: session.user.organizationId,
+          userId: input.assigneeId,
+          title: "Você recebeu uma nova tarefa",
+          body: task.title,
+          link: `/tarefas/${task.id}`,
+        },
+      });
+    }
+  }
 
   revalidatePath("/tarefas");
   revalidatePath("/tarefas/kanban");

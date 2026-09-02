@@ -22,7 +22,10 @@ export async function saveContractTemplate(input: z.infer<typeof templateSchema>
   const organizationId = session.user.organizationId;
 
   if (data.id) {
-    await prisma.contractTemplate.update({ where: { id: data.id }, data: { name: data.name, content: data.content } });
+    await prisma.contractTemplate.updateMany({
+      where: { id: data.id, organizationId },
+      data: { name: data.name, content: data.content },
+    });
   } else {
     await prisma.contractTemplate.create({ data: { organizationId, name: data.name, content: data.content } });
   }
@@ -111,7 +114,7 @@ export async function generateContractAndRedirect(input: z.infer<typeof generate
 
 export async function updateContractContent(id: string, content: string) {
   const session = await requirePermission("contracts.manage");
-  const contract = await prisma.contract.findUnique({ where: { id } });
+  const contract = await prisma.contract.findFirst({ where: { id, organizationId: session.user.organizationId } });
   if (!contract) throw new Error("Contrato não encontrado");
   await prisma.contract.update({ where: { id }, data: { content } });
   revalidatePath(`/contratos/${id}`);
@@ -176,7 +179,21 @@ export async function changeContractStatus(id: string, status: ContractStatus) {
 
   // Automação seção 76: contrato assinado -> cliente ativo
   if (status === "ASSINADO") {
-    await prisma.client.update({ where: { id: contract.clientId }, data: { status: "ATIVO" } });
+    const client = await prisma.client.update({
+      where: { id: contract.clientId },
+      data: { status: "ATIVO" },
+    });
+    if (contract.createdBy) {
+      await prisma.notification.create({
+        data: {
+          organizationId: session.user.organizationId,
+          userId: contract.createdBy,
+          title: `Contrato assinado: ${client.legalName}`,
+          body: "O cliente foi automaticamente marcado como ativo.",
+          link: `/contratos/${id}`,
+        },
+      });
+    }
   }
 
   revalidatePath(`/contratos/${id}`);

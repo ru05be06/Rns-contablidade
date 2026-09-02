@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DELAY_REASON_LABELS } from "@/lib/labels";
-import { formatDateTimeBR } from "@/lib/utils";
 import { logDelay } from "@/app/(app)/tarefas/actions";
 
 interface DelayLog {

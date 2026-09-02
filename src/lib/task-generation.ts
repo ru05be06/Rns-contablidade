@@ -2,18 +2,30 @@ import { Periodicity } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { generateTaskCode } from "@/lib/codes";
 
-function competenceLabel(date: Date) {
+export function competenceLabel(date: Date) {
   return `${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
 }
 
 /** Quantos meses uma periodicidade "pula" a cada nova competência. */
-const PERIODICITY_STEP_MONTHS: Partial<Record<Periodicity, number>> = {
+export const PERIODICITY_STEP_MONTHS: Partial<Record<Periodicity, number>> = {
   MENSAL: 1,
   BIMESTRAL: 2,
   TRIMESTRAL: 3,
   SEMESTRAL: 6,
   ANUAL: 12,
 };
+
+/**
+ * Calcula as competências (datas) que devem ter tarefas geradas a partir de
+ * agora — seção 15 do escopo (recorrência). Função pura, testável.
+ */
+export function computeCompetenceDates(periodicity: Periodicity, now: Date, monthsAhead = 3): Date[] {
+  if (periodicity === Periodicity.UNICA) return [now];
+  const step = PERIODICITY_STEP_MONTHS[periodicity];
+  if (!step) return [now];
+  const count = Math.ceil(monthsAhead / step) + 1;
+  return Array.from({ length: count }, (_, i) => new Date(now.getFullYear(), now.getMonth() + i * step, 1));
+}
 
 /**
  * Gera as próximas tarefas recorrentes de um serviço vinculado a um cliente,
@@ -31,18 +43,9 @@ export async function generateTasksForClientService(clientServiceId: string, mon
   });
   if (!clientService || !clientService.active) return [];
 
-  const step = PERIODICITY_STEP_MONTHS[clientService.periodicity];
   const now = new Date();
   const createdTaskIds: string[] = [];
-
-  const competenceDates: Date[] =
-    clientService.periodicity === Periodicity.UNICA
-      ? [now]
-      : step
-      ? Array.from({ length: Math.ceil(monthsAhead / step) + 1 }, (_, i) =>
-          new Date(now.getFullYear(), now.getMonth() + i * step, 1)
-        )
-      : [now];
+  const competenceDates = computeCompetenceDates(clientService.periodicity, now, monthsAhead);
 
   for (const competenceDate of competenceDates) {
     const competence =

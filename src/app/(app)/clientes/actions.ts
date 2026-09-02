@@ -77,7 +77,11 @@ export async function saveClient(input: ClientFormInput) {
   let clientId = data.id;
 
   if (clientId) {
-    await prisma.client.update({ where: { id: clientId }, data: payload });
+    const { count } = await prisma.client.updateMany({
+      where: { id: clientId, organizationId },
+      data: payload,
+    });
+    if (count === 0) throw new Error("Cliente não encontrado");
     await logAudit({
       organizationId,
       userId: session.user.id,
@@ -114,7 +118,9 @@ export async function saveClientAndRedirect(input: ClientFormInput) {
 
 export async function changeClientStatus(clientId: string, status: ClientStatus) {
   const session = await requirePermission("clients.manage");
-  const client = await prisma.client.findUnique({ where: { id: clientId } });
+  const client = await prisma.client.findFirst({
+    where: { id: clientId, organizationId: session.user.organizationId },
+  });
   if (!client) throw new Error("Cliente não encontrado");
 
   await prisma.client.update({ where: { id: clientId }, data: { status } });
@@ -135,8 +141,8 @@ export async function changeClientStatus(clientId: string, status: ClientStatus)
 
 export async function archiveClient(clientId: string) {
   const session = await requirePermission("clients.delete");
-  await prisma.client.update({
-    where: { id: clientId },
+  await prisma.client.updateMany({
+    where: { id: clientId, organizationId: session.user.organizationId },
     data: { archived: true, deletedAt: new Date() },
   });
   await logAudit({
@@ -164,8 +170,13 @@ const partnerSchema = z.object({
 });
 
 export async function savePartner(input: z.infer<typeof partnerSchema>) {
-  await requirePermission("clients.manage");
+  const session = await requirePermission("clients.manage");
   const data = partnerSchema.parse(input);
+
+  const client = await prisma.client.findFirst({
+    where: { id: data.clientId, organizationId: session.user.organizationId },
+  });
+  if (!client) throw new Error("Cliente não encontrado");
 
   const payload = {
     name: data.name,
@@ -179,7 +190,7 @@ export async function savePartner(input: z.infer<typeof partnerSchema>) {
   };
 
   if (data.id) {
-    await prisma.partner.update({ where: { id: data.id }, data: payload });
+    await prisma.partner.updateMany({ where: { id: data.id, clientId: data.clientId }, data: payload });
   } else {
     await prisma.partner.create({ data: { ...payload, clientId: data.clientId } });
   }
@@ -187,7 +198,9 @@ export async function savePartner(input: z.infer<typeof partnerSchema>) {
 }
 
 export async function deletePartner(partnerId: string, clientId: string) {
-  await requirePermission("clients.manage");
-  await prisma.partner.delete({ where: { id: partnerId } });
+  const session = await requirePermission("clients.manage");
+  await prisma.partner.deleteMany({
+    where: { id: partnerId, client: { id: clientId, organizationId: session.user.organizationId } },
+  });
   revalidatePath(`/clientes/${clientId}`);
 }

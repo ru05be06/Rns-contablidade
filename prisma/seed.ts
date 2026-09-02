@@ -649,6 +649,43 @@ E por estarem justas e contratadas, as partes firmam o presente instrumento.`,
   }
 
   // ---------------------------------------------------------------------
+  // Regras de automação padrão
+  // ---------------------------------------------------------------------
+  await prisma.automationRule.createMany({
+    data: [
+      {
+        organizationId: org.id,
+        name: "Avisar tarefas atrasadas",
+        trigger: "TASK_OVERDUE",
+        actions: { type: "MARK_OVERDUE_AND_NOTIFY" },
+        active: true,
+      },
+      {
+        organizationId: org.id,
+        name: "Avisar prazo próximo (3 dias)",
+        trigger: "TASK_DUE_SOON",
+        conditions: { daysAhead: 3 },
+        actions: { type: "NOTIFY_ASSIGNEE" },
+        active: true,
+      },
+      {
+        organizationId: org.id,
+        name: "Ativar cliente ao assinar contrato",
+        trigger: "CONTRACT_SIGNED",
+        actions: { type: "ACTIVATE_CLIENT" },
+        active: true,
+      },
+      {
+        organizationId: org.id,
+        name: "Marcar cobrança como recebida",
+        trigger: "RECEIVABLE_PAID",
+        actions: { type: "MARK_RECEIVED" },
+        active: true,
+      },
+    ],
+  });
+
+  // ---------------------------------------------------------------------
   // Notificações de exemplo para o admin
   // ---------------------------------------------------------------------
   await prisma.notification.createMany({

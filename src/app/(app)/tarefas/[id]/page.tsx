@@ -37,14 +37,11 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
   });
   if (!task) notFound();
 
-  const [users, allTasks] = await Promise.all([
-    prisma.user.findMany({ where: { organizationId, active: true, deletedAt: null }, select: { id: true, name: true } }),
-    prisma.task.findMany({
-      where: { organizationId, deletedAt: null, id: { not: task.id } },
-      select: { id: true, title: true, code: true },
-      take: 200,
-    }),
-  ]);
+  const allTasks = await prisma.task.findMany({
+    where: { organizationId, deletedAt: null, id: { not: task.id } },
+    select: { id: true, title: true, code: true },
+    take: 200,
+  });
 
   const canExecute = session.user.permissions.includes("tasks.execute");
   const canManage = session.user.permissions.includes("tasks.manage");

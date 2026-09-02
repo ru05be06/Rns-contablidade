@@ -49,8 +49,8 @@ export function KanbanBoard({ tasks, canManage }: { tasks: KanbanTask[]; canMana
     if (!current || current.status === newStatus) return;
 
     setItems((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)));
-    moveTaskKanban(taskId, newStatus).catch(() => {
-      toast.error("Erro ao mover tarefa");
+    moveTaskKanban(taskId, newStatus).catch((error: unknown) => {
+      toast.error(error instanceof Error ? error.message : "Erro ao mover tarefa");
       setItems((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: current.status } : t)));
     });
   }

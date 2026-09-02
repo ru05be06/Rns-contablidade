@@ -15,6 +15,7 @@ import {
   Settings,
   Inbox,
   Radar,
+  TrendingDown,
 } from "lucide-react";
 
 export interface NavItem {
@@ -36,6 +37,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Pendências", href: "/pendencias", icon: Inbox, permission: "tasks.view" },
   { label: "Contratos", href: "/contratos", icon: FileSignature, permission: "contracts.view" },
   { label: "Financeiro", href: "/financeiro", icon: Wallet, permission: "financeiro.view" },
+  { label: "Inadimplência", href: "/financeiro/inadimplencia", icon: TrendingDown, permission: "financeiro.view" },
   { label: "Documentos", href: "/documentos", icon: FolderOpen, permission: "documents.view" },
   { label: "Relatórios", href: "/relatorios", icon: BarChart3, permission: "reports.view" },
   { label: "Equipe", href: "/equipe", icon: UsersRound, permission: "team.view" },

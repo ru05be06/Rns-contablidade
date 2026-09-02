@@ -20,11 +20,13 @@ import { DeadlineBadge } from "@/components/deadline-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { formatCurrencyBRL } from "@/lib/utils";
+import { runTaskDeadlineAutomations } from "@/lib/automation-engine";
 import { getDashboardData, getDepartmentBreakdown, getTeamWorkload } from "./queries";
 
 export default async function DashboardPage() {
   const session = await requirePermission("dashboard.view");
   const organizationId = session.user.organizationId;
+  await runTaskDeadlineAutomations(organizationId);
 
   const [data, departments, workload] = await Promise.all([
     getDashboardData(organizationId),
