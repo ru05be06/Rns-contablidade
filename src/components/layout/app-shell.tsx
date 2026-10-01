@@ -85,9 +85,8 @@ function SidebarHeader({
   return (
     <div className={cn("flex flex-col gap-2 px-4", compact ? "" : "py-4")}>
       <Link href="/dashboard" className="flex items-center gap-2">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
-          R
-        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/branding/logo.jpg" alt="RNS Contabilidade" className="h-8 w-8 shrink-0 rounded-full object-cover" />
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold leading-none">RNS Gestão</p>
           <p className="truncate text-xs text-muted-foreground">{organizationName}</p>

@@ -12,9 +12,8 @@ export default async function LoginPage() {
       <div className="flex items-center justify-center px-6 py-12">
         <div className="w-full max-w-sm">
           <div className="mb-8 flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold">
-              R
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/branding/logo.jpg" alt="RNS Contabilidade" className="h-9 w-9 shrink-0 rounded-full object-cover" />
             <div>
               <p className="text-sm font-semibold leading-none">RNS Gestão Contábil</p>
               <p className="text-xs text-muted-foreground">Central de comando do escritório</p>
